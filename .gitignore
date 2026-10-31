@@ -9,6 +9,9 @@ venv/
 data/*.csv
 assessment/
 
+# Deliverables: the filled December file and the chart score.py draws from it
+!data/december_chart_inputs.csv
+
 # Stray CSVs at the root; the final submission file is the only one tracked
 /*.csv
 !/validation_predictions.csv
@@ -16,4 +19,5 @@ assessment/
 # Generated artifacts
 models/*
 !models/.gitkeep
-scorer_results/
+scorer_results/*
+!scorer_results/candidate_december.png

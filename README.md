@@ -2,9 +2,17 @@
 
 Predicts the posted rate (USD) of a freight load from its lane, distance, equipment, weight and date. Built for the Spotter Machine Learning Engineer assessment.
 
-- **Training data:** 48,000 labelled loads, Jan–Oct 2025 (`data/train_test.csv`)
-- **Predictions:** 12,000 loads, Nov–Dec 2025 (`validation_predictions.csv`), plus a fixed-lane December chart
-- **Report:** `reports/report.pdf` · **EDA:** `notebooks/01_eda.ipynb`
+## Deliverables
+
+| Deliverable | File |
+|---|---|
+| Predictions for the 12,000 Nov–Dec 2025 loads | [`validation_predictions.csv`](validation_predictions.csv) |
+| December predictions for the fixed load | [`data/december_chart_inputs.csv`](data/december_chart_inputs.csv) |
+| December chart produced by `score.py` | [`scorer_results/candidate_december.png`](scorer_results/candidate_december.png) |
+| Report: validation, data split and December chart | [`reports/report.pdf`](reports/report.pdf) ([DOCX](reports/report.docx)) |
+| Exploratory analysis | [`notebooks/01_eda.ipynb`](notebooks/01_eda.ipynb) |
+
+![December 2025 predicted rate for the fixed Lexington to Fort Wayne load](scorer_results/candidate_december.png)
 
 ## Approach in brief
 
@@ -35,7 +43,7 @@ Full per-fold results, including RMSE, bias and scores on all loads with broken 
 
 ```
 .
-├── data/                  # Provided CSVs (not committed; see "Data")
+├── data/                  # Provided CSVs (only the filled December file is committed; see "Data")
 ├── notebooks/01_eda.ipynb # Exploratory analysis with charts
 ├── src/
 │   ├── config.py          # Paths and constants
@@ -49,6 +57,7 @@ Full per-fold results, including RMSE, bias and scores on all loads with broken 
 │   └── report.py          # Builds reports/report.docx and .pdf
 ├── tests/                 # pytest suite (reuses score.py's validators)
 ├── reports/               # Report, figures, backtest and diagnostics results
+├── scorer_results/        # December chart written by score.py
 ├── score.py               # Provided scorer (unchanged)
 └── validation_predictions.csv   # Final submission
 ```
@@ -67,7 +76,7 @@ python -m pip install -r requirements-dev.txt    # + tests, notebook, report
 
 ## Data
 
-Place the four provided files in `data/`:
+Place the four provided files in `data/` (overwriting the committed December file is fine; `src.predict` fills it again):
 
 ```
 data/train_test.csv
