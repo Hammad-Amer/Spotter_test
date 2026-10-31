@@ -12,7 +12,8 @@ Predicts the posted rate (USD) of a freight load from its lane, distance, equipm
 2. **Drop `quote_signal`.** It equals price per mile in some months, mirrors it in others, and is pure noise in Nov–Dec. A check that needs no labels (its correlation with distance) shows this. A model that used it would look great on a random split and fail on Nov–Dec.
 3. **Validate by time.** Three rolling folds each train on the past and predict the next two months, the same shape as Jan–Oct → Nov–Dec. Models are compared on mean and worst-fold MAE.
 4. **Model.**
-   - LightGBM on log(rate) uses load attributes and coordinates. It has no city names, so new cities still get a price.
+   - A 70/30 average of LightGBM and a log-linear model, both on log(rate), prices each load from its attributes.
+     LightGBM uses coordinates rather than city names, so new cities still get a price.
    - A **market price level** shared by all loads on a day is added on top: the recent level carried forward, plus the yearly upward trend, plus a ~4% ramp over the last four weeks of each quarter.
    - The validation `market_index` values give each future day its weekly cycle.
 
@@ -78,7 +79,7 @@ data/december_chart_inputs.csv
 ## Run
 
 ```bash
-python -m src.train          # backtest all candidates, train the final model (~2 min)
+python -m src.train          # backtest all candidates, train the final model (~4 min)
 python -m src.diagnostics    # split / quote_signal / unseen-city evidence (~2 min)
 python -m src.predict        # writes validation_predictions.csv and fills predicted_rate in data/december_chart_inputs.csv
 python score.py --predictions validation_predictions.csv --december-predictions data/december_chart_inputs.csv

@@ -6,58 +6,208 @@ Run after train, diagnostics, predict, score.py and the EDA notebook:  python -m
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 
 import numpy as np
 import pandas as pd
 from docx import Document
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 from src import config, data, split
+from src.train import prepare_training_data
 
 DOCX_PATH = config.REPORTS_DIR / "report.docx"
 PDF_PATH = config.REPORTS_DIR / "report.pdf"
 DECEMBER_CHART = config.ROOT / "scorer_results" / "candidate_december.png"
-MUTED = RGBColor(0x52, 0x51, 0x4E)
+
+AUTHOR = "Hammad Amer"
+TITLE = "Freight Rate Prediction"
+SUBTITLE = "Spotter Machine Learning Engineer Assessment"
+FONT = "Calibri"
+CODE_FONT = "Consolas"
+BLACK = RGBColor(0, 0, 0)
+TEXT_WIDTH = 6.5  # inches: US Letter with 1-inch margins
+NUMERIC = re.compile(r"^[$+\-−]?[\d,.]+%?$")
+
+
+class Report:
+    """A plain, black-and-white document with numbered tables and figures."""
+
+    def __init__(self):
+        self.document = Document()
+        self.tables = 0
+        self.figures = 0
+        self._configure()
+
+    def _configure(self) -> None:
+        for section in self.document.sections:
+            section.top_margin = section.bottom_margin = Inches(1)
+            section.left_margin = section.right_margin = Inches(1)
+        styles = self.document.styles
+        _set_style(styles["Normal"], FONT, 10.5)
+        styles["Normal"].paragraph_format.space_after = Pt(6)
+        styles["Normal"].paragraph_format.line_spacing = 1.15
+        for name, size, before, after in [("Heading 1", 13, 18, 6), ("Heading 2", 11, 12, 4)]:
+            style = styles[name]
+            _set_style(style, FONT, size, bold=True)
+            style.paragraph_format.space_before = Pt(before)
+            style.paragraph_format.space_after = Pt(after)
+            style.paragraph_format.keep_with_next = True
+        _set_style(styles["Footer"], FONT, 9)
+        _add_page_number(self.document.sections[0])
+
+    def title_block(self) -> None:
+        today = date.today()
+        for text, size, bold, after in [
+            (TITLE, 20, True, 2),
+            (SUBTITLE, 12, False, 2),
+            (f"{AUTHOR}  |  {today.day} {today:%B %Y}", 10.5, False, 10),
+        ]:
+            paragraph = self.document.add_paragraph()
+            paragraph.paragraph_format.space_after = Pt(after)
+            run = paragraph.add_run(text)
+            run.font.size, run.font.bold = Pt(size), bold
+        _bottom_border(paragraph)
+        properties = self.document.core_properties
+        properties.author = properties.last_modified_by = AUTHOR
+        properties.title, properties.subject = TITLE, SUBTITLE
+        properties.comments = properties.keywords = ""
+
+    def heading(self, text: str, level: int = 1) -> None:
+        self.document.add_heading(text, level=level)
+
+    def paragraph(self, text: str) -> None:
+        self.document.add_paragraph(text)
+
+    def equation(self, text: str) -> None:
+        paragraph = self.document.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = paragraph.add_run(text)
+        run.font.italic = True
+
+    def table(self, frame: pd.DataFrame, caption: str, widths) -> None:
+        """Caption above, then a table ruled top, below the header and at the bottom."""
+        self.tables += 1
+        self._caption(f"Table {self.tables}.", caption, keep_with_next=True)
+        table = self.document.add_table(rows=1, cols=len(frame.columns))
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        _table_rules(table)
+        rows = [list(frame.columns)] + [["" if pd.isna(value) else str(value) for value in row] for row in frame.itertuples(index=False)]
+        for index, values in enumerate(rows):
+            cells = table.rows[0].cells if index == 0 else table.add_row().cells
+            for column, (cell, value) in enumerate(zip(cells, values)):
+                cell.width = Inches(widths[column])
+                paragraph = cell.paragraphs[0]
+                paragraph.paragraph_format.space_before = paragraph.paragraph_format.space_after = Pt(2)
+                paragraph.paragraph_format.line_spacing = 1.0
+                paragraph.paragraph_format.keep_with_next = index < len(rows) - 1
+                if column > 0 and all(NUMERIC.match(str(row[column])) or row[column] in ("", "-") for row in rows[1:]):
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                run = paragraph.add_run(value)
+                run.font.size = Pt(9)
+                run.font.bold = index == 0
+            if index == 0:
+                for cell in cells:
+                    _cell_bottom_rule(cell)
+        self.document.add_paragraph().paragraph_format.space_after = Pt(2)
+
+    def figure(self, path, caption: str, width: float = 6.2) -> None:
+        self.figures += 1
+        self.document.add_picture(str(path), width=Inches(width))
+        picture = self.document.paragraphs[-1]
+        picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        picture.paragraph_format.keep_with_next = True
+        self._caption(f"Figure {self.figures}.", caption)
+
+    def code(self, lines) -> None:
+        for line in lines:
+            paragraph = self.document.add_paragraph()
+            paragraph.paragraph_format.space_after = Pt(0)
+            paragraph.paragraph_format.left_indent = Inches(0.25)
+            run = paragraph.add_run(line)
+            run.font.name, run.font.size = CODE_FONT, Pt(9)
+        paragraph.paragraph_format.space_after = Pt(6)
+
+    def _caption(self, label: str, text: str, keep_with_next: bool = False) -> None:
+        paragraph = self.document.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        paragraph.paragraph_format.space_after = Pt(8)
+        paragraph.paragraph_format.keep_with_next = keep_with_next
+        for part, bold in [(label + " ", True), (text, False)]:
+            run = paragraph.add_run(part)
+            run.font.size, run.font.bold = Pt(9), bold
+
+    def save(self) -> None:
+        self.document.save(DOCX_PATH)
+        print(f"Saved {DOCX_PATH}")
+
+
+def _set_style(style, name: str, size: float, bold: bool = False) -> None:
+    """Explicit black font, overriding the template's theme fonts and accent colours."""
+    style.font.name = name
+    style.font.size = Pt(size)
+    style.font.bold = bold
+    style.font.italic = False
+    style.font.color.rgb = BLACK
+    fonts = style.element.get_or_add_rPr().get_or_add_rFonts()
+    for attribute in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme"):
+        fonts.attrib.pop(qn(attribute), None)
+    for attribute in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+        fonts.set(qn(attribute), name)
+
+
+def _border(tag: str, size: int = 0) -> OxmlElement:
+    element = OxmlElement(f"w:{tag}")
+    element.set(qn("w:val"), "single" if size else "nil")
+    if size:
+        element.set(qn("w:sz"), str(size))
+        element.set(qn("w:space"), "0")
+        element.set(qn("w:color"), "000000")
+    return element
+
+
+def _table_rules(table) -> None:
+    borders = OxmlElement("w:tblBorders")
+    for tag, size in [("top", 8), ("left", 0), ("bottom", 8), ("right", 0), ("insideH", 0), ("insideV", 0)]:
+        borders.append(_border(tag, size))
+    table._tbl.tblPr.insert_element_before(borders, "w:shd", "w:tblLayout", "w:tblCellMar", "w:tblLook", "w:tblCaption", "w:tblDescription")
+
+
+def _cell_bottom_rule(cell) -> None:
+    borders = OxmlElement("w:tcBorders")
+    borders.append(_border("bottom", 4))
+    cell._tc.get_or_add_tcPr().insert_element_before(borders, "w:shd", "w:noWrap", "w:tcMar", "w:textDirection", "w:tcFitText", "w:vAlign", "w:hideMark")
+
+
+def _bottom_border(paragraph) -> None:
+    borders = OxmlElement("w:pBdr")
+    borders.append(_border("bottom", 6))
+    # Word requires pPr children in schema order, so the border goes before spacing and justification.
+    paragraph._p.get_or_add_pPr().insert_element_before(
+        borders, "w:shd", "w:tabs", "w:suppressAutoHyphens", "w:spacing", "w:ind", "w:jc", "w:outlineLvl", "w:rPr"
+    )
+
+
+def _add_page_number(section) -> None:
+    paragraph = section.footer.paragraphs[0]
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    field = OxmlElement("w:fldSimple")
+    field.set(qn("w:instr"), "PAGE")
+    run = OxmlElement("w:r")
+    text = OxmlElement("w:t")
+    text.text = "1"
+    run.append(text)
+    field.append(run)
+    paragraph._p.append(field)
 
 
 def money(value: float) -> str:
     return f"${value:,.0f}"
-
-
-def add_table(document, frame: pd.DataFrame, widths=None) -> None:
-    table = document.add_table(rows=1, cols=len(frame.columns))
-    table.style = "Light List Accent 1"
-    for cell, column in zip(table.rows[0].cells, frame.columns):
-        cell.text = str(column)
-    for _, row in frame.iterrows():
-        for cell, value in zip(table.add_row().cells, row):
-            cell.text = "" if pd.isna(value) else str(value)
-    for row in table.rows:
-        for index, cell in enumerate(row.cells):
-            for paragraph in cell.paragraphs:
-                for run in paragraph.runs:
-                    run.font.size = Pt(9)
-            if widths:
-                cell.width = Inches(widths[index])
-    document.add_paragraph()
-
-
-def add_figure(document, path, caption: str, width: float = 6.3) -> None:
-    document.add_picture(str(path), width=Inches(width))
-    document.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    note = document.add_paragraph(caption)
-    note.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    for run in note.runs:
-        run.font.size = Pt(9)
-        run.font.italic = True
-        run.font.color.rgb = MUTED
-
-
-def bullets(document, items) -> None:
-    for item in items:
-        document.add_paragraph(item, style="List Bullet")
 
 
 def data_quality_table(train: pd.DataFrame, validation: pd.DataFrame, n_outliers: int) -> pd.DataFrame:
@@ -65,15 +215,15 @@ def data_quality_table(train: pd.DataFrame, validation: pd.DataFrame, n_outliers
     unseen_rows = (~validation["pickup"].isin(train_cities) | ~validation["delivery"].isin(train_cities)).sum()
     unseen_cities = len((set(validation["pickup"]) | set(validation["delivery"])) - train_cities)
     rows = [
-        ("Negative weight (sign error)", (train["weight"] < 0).sum(), (validation["weight"] < 0).sum(), "Absolute value"),
-        ("Missing weight", train["weight"].isna().sum(), validation["weight"].isna().sum(), "Median for the equipment type + a missing flag"),
+        ("Negative weight", (train["weight"] < 0).sum(), (validation["weight"] < 0).sum(), "Sign error; absolute value taken"),
+        ("Missing weight", train["weight"].isna().sum(), validation["weight"].isna().sum(), "Median for the equipment type, plus an indicator"),
         ("Missing market_index", train["market_index"].isna().sum(), validation["market_index"].isna().sum(), "Median market_index of the same day"),
-        ("Broken prices (1.8x+ off expected)", n_outliers, "-", "Excluded from training; reported in raw test scores"),
-        ("quote_signal unreliable / leaky", "all rows", "all rows", "Not used as a feature (section 3.4)"),
-        (f"Cities not seen in training ({unseen_cities})", "-", unseen_rows, "Model uses coordinates, not city names"),
-        ("December file lacks coordinates and market_index", "-", "31 rows", "City coordinate lookup; daily market_index from validation inputs"),
+        ("Erroneous rate (1.8x or more from expected)", f"{n_outliers:,}", "-", "Excluded from training; kept in raw test scores"),
+        ("quote_signal unstable over time", "All rows", "All rows", "Not used (Section 3.4)"),
+        (f"Cities absent from training ({unseen_cities})", "-", f"{unseen_rows:,} loads", "Coordinates used instead of city names"),
+        ("December inputs lack coordinates and market_index", "-", "31 rows", "City coordinate lookup; daily market_index from validation inputs"),
     ]
-    return pd.DataFrame(rows, columns=["Issue", "train_test", "validation", "How it was handled"])
+    return pd.DataFrame(rows, columns=["Issue", "Training", "Validation", "Treatment"])
 
 
 def build() -> None:
@@ -82,226 +232,284 @@ def build() -> None:
     results = pd.read_csv(config.BACKTEST_RESULTS_PATH)
     december = pd.read_csv(config.DECEMBER_PREDICTIONS_PATH)
     train, validation = data.load_train_test(), data.load_validation()
+    cleaned, outlier, _ = prepare_training_data()
 
     summary = results.groupby("model").agg(
         MAE=("MAE", "mean"), worst=("MAE", "max"), RMSE=("RMSE", "mean"), MAPE=("MAPE", "mean"),
         bias=("bias_pct", "mean"), raw_MAE=("raw_MAE", "mean"), raw_RMSE=("raw_RMSE", "mean"),
     ).sort_values("MAE")
-    selected_bias = results.loc[results["model"] == metadata["selected_model"], "bias_pct"]
     selected = metadata["selected_model"]
-    best = summary.loc[selected]
-    naive = summary.loc["Naive $/mile"]
-    no_level = summary.loc["LightGBM"]
+    selected_bias = results.loc[results["model"] == selected, "bias_pct"]
+    best, naive = summary.loc[selected], summary.loc["Naive $/mile"]
+    lightgbm, lightgbm_level = summary.loc["LightGBM"], summary.loc["LightGBM + market level"]
     level = metadata["market_level"]
 
-    document = Document()
-    style = document.styles["Normal"]
-    style.font.name = "Calibri"
-    style.font.size = Pt(10.5)
+    clean = cleaned[~outlier]
+    rate_per_mile = clean[config.TARGET] / clean["distance"]
+    equipment_premium = rate_per_mile.groupby(clean["equipment"]).median() / rate_per_mile[clean["equipment"] == "Dry Van"].median() - 1
+    lane = clean[(clean["pickup"] == "Lexington") & (clean["delivery"] == "Fort Wayne")][config.TARGET]
+    fold_flags = []
+    for fold in split.FOLDS:
+        fit, _ = split.fold_masks(cleaned["date"], fold)
+        per_fold = data.flag_price_outliers(cleaned[fit])
+        fold_flags.append((int(per_fold.sum()), bool((per_fold == outlier[fit]).all())))
 
-    document.add_heading("Freight Rate Prediction", level=0)
-    byline = document.add_paragraph(f"Spotter Machine Learning Engineer assessment  |  {date.today():%d %B %Y}")
-    byline.runs[0].font.color.rgb = MUTED
+    report = Report()
+    report.title_block()
 
-    document.add_heading("1. Summary", level=1)
-    bullets(
-        document,
-        [
-            "Task: predict posted_rate for 12,000 loads in Nov-Dec 2025, learning from 48,000 labelled loads in Jan-Oct 2025.",
-            f"Validation: three rolling, time-based folds that each train on the past and predict the next two months, "
-            f"the same shape as the real task. The selected model averages {money(best['MAE'])} MAE ({best['MAPE']:.1f}% MAPE) "
-            f"on clean test loads, with a worst fold of {money(best['worst'])}; a naive $/mile baseline scores {money(naive['MAE'])}.",
-            f"Model: an average of LightGBM (70%) and a log-linear model (30%) on log(rate), plus a market price level shared "
-            f"by all loads on a day (recent level + trend + quarter-end ramp). The market level is the biggest gain: LightGBM "
-            f"alone scores {money(no_level['MAE'])}.",
-            "Key data findings: quote_signal leaks the answer in some months, mirrors it in others and is pure noise in Nov-Dec, "
-            f"so it is not used; {metadata['excluded_outliers']:,} broken prices (1.4%) are excluded from training; "
-            "eight validation cities never appear in training and are priced from coordinates.",
-        ],
+    report.heading("1 Summary")
+    report.paragraph(
+        f"This report describes a model that predicts the posted rate of a truckload from its lane, distance, equipment, weight "
+        f"and date. It was trained on {len(train):,} loads posted between January and October 2025 and used to price "
+        f"{len(validation):,} loads from November and December 2025."
+    )
+    report.paragraph(
+        "The model has two components. A load model, a 70/30 average of a LightGBM regressor and a log-linear regression, "
+        "prices each load from its own attributes. A market price level, shared by all loads on a given day, captures how "
+        "rates move over time: a gradual upward trend and a rise of about 4% over the last four weeks of each quarter."
+    )
+    report.paragraph(
+        f"On three rolling backtests that each forecast two months ahead, the model has a mean absolute error (MAE) of "
+        f"{money(best['MAE'])} per load ({best['MAPE']:.1f}% of the rate), with a worst fold of {money(best['worst'])}. "
+        f"A median rate-per-mile baseline scores {money(naive['MAE'])}, and LightGBM without the market level "
+        f"{money(lightgbm['MAE'])}."
+    )
+    report.paragraph(
+        f"Two data issues shaped the approach. About {outlier.mean():.1%} of training rates ({metadata['excluded_outliers']:,} "
+        "loads) are data-entry errors, two to seven times their expected value, and are excluded from training. The "
+        "quote_signal column equals the rate per mile in some months, mirrors it in others and carries no information in "
+        "November and December, so it is not used."
     )
 
-    document.add_heading("2. Data and data quality", level=1)
-    document.add_paragraph(
-        "train_test.csv holds 48,000 loads from 1 January to 31 October 2025 with the posted rate. validation.csv holds "
-        "12,000 loads from 1 November to 31 December 2025 without it. Rates are close to multiplicative in their drivers "
-        "(shorter trips cost more per mile; Reefer > Flatbed > Dry Van; heavier loads cost slightly more), so all models "
-        "work on log(rate)."
+    report.heading("2 Data and data quality")
+    report.paragraph(
+        f"train_test.csv contains {len(train):,} loads from 1 January to 31 October 2025, each with pickup and delivery city "
+        "and coordinates, distance, equipment type, weight, posting date, a daily market_index, a quote_signal and the posted "
+        f"rate. validation.csv contains {len(validation):,} loads from 1 November to 31 December 2025 with the same inputs "
+        "and no rate. Table 1 lists the data-quality issues found and how each was handled."
     )
-    add_table(document, data_quality_table(train, validation, metadata["excluded_outliers"]), widths=[2.0, 0.8, 0.8, 2.7])
-    document.add_paragraph(
-        "Broken prices were found by comparing each load's log rate with a robust log-linear estimate. Normal loads sit "
-        "within about ±15% of it, the broken ones 2-7x away, with no loads in between, so the 1.8x cut-off is not sensitive."
+    report.table(
+        data_quality_table(train, validation, metadata["excluded_outliers"]),
+        "Data-quality issues and their treatment.",
+        widths=[2.15, 0.75, 0.9, 2.7],
     )
-    add_figure(document, config.FIGURES_DIR / "outlier_residuals.png", "Figure 1. Distance of each load's rate from its expected rate (log scale).")
-
-    document.add_heading("3. Validation approach and data split", level=1)
-    document.add_heading("3.1 Why the split is by time, not random", level=2)
-    document.add_paragraph(
-        "The real task is a forecast: train on Jan-Oct and predict Nov-Dec. A random split puts loads from the same days in "
-        "both train and test, so the model is tested on market conditions it has already seen, and it rewards features "
-        "like quote_signal whose meaning changes over time. The table compares the same LightGBM model (without the market "
-        "level) on both splits."
+    report.paragraph(
+        "Erroneous rates were identified by comparing each load's log rate per mile with a ridge regression on lane, "
+        "equipment, distance, weight, market_index and month, refitted once without the flagged loads so that they do "
+        "not distort the estimate. Normal loads lie within about 20% of the estimate and erroneous ones two to seven times "
+        "away, with no loads in between (Figure 1), so the 1.8x threshold is not sensitive."
     )
-    comparison = pd.DataFrame(diagnostics["split_comparison"]).rename(columns={"split": "Split", "features": "Features", "MAE": "MAE ($)"})
-    add_table(document, comparison, widths=[2.2, 2.0, 1.0])
-    document.add_paragraph(
-        "The random split reports errors 2-3x lower than the time split; it would have selected the wrong features and "
-        "overstated accuracy."
+    report.figure(
+        config.FIGURES_DIR / "outlier_residuals.png",
+        "Absolute log ratio of each load's rate to its expected rate. Note the log-scaled count axis.",
     )
 
-    document.add_heading("3.2 Rolling time-based folds", level=2)
+    report.heading("3 Validation approach and data split")
+    report.heading("3.1 Splitting by time", level=2)
+    report.paragraph(
+        "The task is a forecast: the model is trained on January to October and applied to November and December. A random "
+        "split places loads from the same days in both the training and test sets, so the test set contains no unseen "
+        "market conditions, and it rewards features whose meaning drifts over time. Table 2 compares the two splits for "
+        "the same LightGBM model without the market level."
+    )
+    comparison = pd.DataFrame(diagnostics["split_comparison"])
+    comparison["MAE"] = comparison["MAE"].map("${:.1f}".format)
+    comparison["split"] = comparison["split"].str.replace("->", "to", regex=False)
+    report.table(
+        comparison.rename(columns={"split": "Split", "features": "Features", "MAE": "MAE"}),
+        "Test MAE of the same model under a random and a time-based split.",
+        widths=[2.6, 2.4, 1.0],
+    )
+    report.paragraph(
+        "The random split understates the error by a factor of two to three, and it favours quote_signal, which is harmful "
+        "in a true forecast (Section 3.4). All model selection therefore uses time-based folds."
+    )
+
+    report.heading("3.2 Rolling time-based folds", level=2)
     dates = train["date"]
     folds = []
     for fold in split.FOLDS:
         train_mask, test_mask = split.fold_masks(dates, fold)
         folds.append(
             {
-                "Fold": fold.name,
-                "Train": f"{dates[train_mask].min():%d %b} - {dates[train_mask].max():%d %b}",
-                "Test": f"{dates[test_mask].min():%d %b} - {dates[test_mask].max():%d %b}",
-                "Train loads": f"{train_mask.sum():,}",
+                "Fold": fold.name.replace("->", "to"),
+                "Training period": f"{dates[train_mask].min():%d %b} to {dates[train_mask].max():%d %b}",
+                "Test period": f"{dates[test_mask].min():%d %b} to {dates[test_mask].max():%d %b}",
+                "Training loads": f"{train_mask.sum():,}",
                 "Test loads": f"{test_mask.sum():,}",
             }
         )
-    add_table(document, pd.DataFrame(folds), widths=[1.6, 1.3, 1.3, 1.0, 1.0])
-    bullets(
-        document,
-        [
-            "Each fold trains only on data before the test period and predicts the following two months, so the horizon "
-            "matches Nov-Dec. Three folds give three independent tests across different market conditions.",
-            "Models are compared on the mean and the worst fold, so a model that is lucky on one period is not preferred.",
-            "Broken prices are removed from training only. Test scores are reported on clean loads (the model's real accuracy) "
-            "and on all loads ('raw'), because the hidden validation labels may contain the same kind of errors.",
-            "MAE is the main metric (dollars per load); RMSE and MAPE are reported too, as the scoring metric is not specified.",
-            "After selection, the final model is retrained once on all clean Jan-Oct loads.",
-        ],
+    report.table(pd.DataFrame(folds), "Backtest folds.", widths=[1.6, 1.45, 1.45, 1.0, 0.9])
+    report.paragraph(
+        "Each fold trains on all data up to a cutoff and tests on the following two months, matching the November to "
+        "December horizon (Table 3). Erroneous rates are removed from the training data only. Test error is reported on "
+        "clean loads, which reflects the model's accuracy, and on all loads ('raw'), since the hidden validation labels "
+        "may contain similar errors. Because the scoring metric is not specified, MAE, RMSE and MAPE are all reported. "
+        "Models are selected on mean MAE and on worst-fold MAE, to avoid favouring a model that does well in a single "
+        f"period. The selected model is then refitted on all {metadata['training_rows']:,} clean January to October loads."
     )
 
-    document.add_heading("3.3 Leakage checks", level=2)
-    bullets(
-        document,
-        [
-            "Lookup tables (daily market_index medians, city coordinates, weight medians) are built from input columns only, "
-            "never from posted_rate. Validation inputs are used only to extend the daily market_index table to Nov-Dec, "
-            "which needs no labels.",
-            "The models and the market price level are fitted inside each fold from that fold's training data only.",
-            "Broken prices are flagged once on all Jan-Oct loads. Flagging each fold's training data on its own picks "
-            "exactly the same loads (275, 400 and 533), because no load sits between normal noise and the 1.8x cut-off.",
-        ],
+    report.heading("3.3 Leakage controls", level=2)
+    counts = ", ".join(str(count) for count, _ in fold_flags[:-1]) + f" and {fold_flags[-1][0]}"
+    flags_note = (
+        f"flagging each fold's training data separately selects exactly the same loads ({counts}), because there is a wide "
+        "gap between normal variation and the threshold."
+        if all(same for _, same in fold_flags)
+        else f"flagging each fold's training data separately selects {counts} loads, with small differences from the global flags."
+    )
+    report.paragraph(
+        "Lookup tables (daily market_index medians, city coordinates and weight medians) are built from input columns only "
+        "and never use posted_rate. Validation inputs are used for two purposes only: extending the daily market_index table "
+        "to November and December, and locating cities that appear only in validation. Within each fold, the models and "
+        "the market level are fitted on that fold's training period alone. Erroneous rates are flagged once on the full "
+        f"January to October data; {flags_note}"
     )
 
-    document.add_heading("3.4 The quote_signal trap", level=2)
+    report.heading("3.4 quote_signal", level=2)
     qs = pd.DataFrame(diagnostics["quote_signal_by_month"])
     august = qs[qs["month"] == "2025-08"].iloc[0]
-    document.add_paragraph(
-        "quote_signal changes behaviour week by week: in Jan-Mar, Jun and Sep it equals price per mile (correlation +0.996, "
-        "a leak of the answer); in Apr, May, Jul and Oct it mirrors it (-0.99); in August it is noise (-0.02). Validation "
-        "has no labels, but in every labelled month quote_signal is also strongly correlated with distance (because price "
-        "per mile is), so that correlation shows the state without the answer. For November and December it is "
-        f"{qs.iloc[-2]['corr_quote_signal_distance']:+.2f} and {qs.iloc[-1]['corr_quote_signal_distance']:+.2f}, the same as "
-        f"August ({august['corr_quote_signal_distance']:+.2f}): noise. On August, a model using quote_signal scored "
-        f"{money(august['MAE_with_quote_signal'])} MAE against {money(august['MAE_without_quote_signal'])} without it, so the feature is dropped."
+    labelled = qs[qs["corr_quote_signal_rate_per_mile"].notna() & (qs["month"] != "2025-08")]
+    report.paragraph(
+        "quote_signal behaves differently from month to month (Figure 2). In January to March, June and September it is "
+        "almost exactly the rate per mile (correlation +0.996); in April, May, July and October it is its mirror image "
+        "(-0.99); in August it is unrelated (-0.02). Its state in November and December cannot be checked against labels, "
+        "but it can be inferred: in every other labelled month quote_signal is also strongly correlated with distance "
+        f"(absolute correlation of about {labelled['corr_quote_signal_distance'].abs().min():.1f}), because the rate per mile "
+        f"is. That correlation is {qs.iloc[-2]['corr_quote_signal_distance']:+.2f} in November and "
+        f"{qs.iloc[-1]['corr_quote_signal_distance']:+.2f} in December, as in August "
+        f"({august['corr_quote_signal_distance']:+.2f}). A model trained on the other months and tested on August has an "
+        f"MAE of {money(august['MAE_with_quote_signal'])} with quote_signal and {money(august['MAE_without_quote_signal'])} "
+        "without it, so the feature is excluded."
     )
-    add_figure(document, config.FIGURES_DIR / "quote_signal_regimes.png", "Figure 2. quote_signal by week (top) and the label-free check by month (bottom).")
+    report.figure(
+        config.FIGURES_DIR / "quote_signal_regimes.png",
+        "Weekly correlation of quote_signal with the rate per mile (top) and the label-free check by month (bottom).",
+        width=5.6,
+    )
 
-    document.add_heading("3.5 Robustness to unseen cities", level=2)
+    report.heading("3.5 Unseen cities", level=2)
     cities = pd.DataFrame(diagnostics["unseen_cities"])
-    document.add_paragraph(
-        f"Eight training cities ({', '.join(cities['hidden_cities'].iloc[0])}) were hidden from training and the models "
-        "scored on loads touching them, mirroring the eight new cities in validation."
+    hidden = cities["hidden_cities"].iloc[0]
+    report.paragraph(
+        "Eight validation cities never appear in training. To test how the models handle new cities, eight training cities "
+        f"({', '.join(hidden[:-1])} and {hidden[-1]}) were withheld from training and the models were scored on the loads "
+        "touching them (Table 4). The coordinate-based LightGBM model generalises better than the log-linear model with "
+        "city indicators, and blending the two costs nothing on these loads."
     )
-    add_table(document, cities[["model", "MAE_on_unseen_city_loads"]].rename(columns={"model": "Model", "MAE_on_unseen_city_loads": "MAE on unseen-city loads ($)"}), widths=[3.0, 2.0])
+    unseen = cities[["model", "MAE_on_unseen_city_loads"]].copy()
+    unseen["MAE_on_unseen_city_loads"] = unseen["MAE_on_unseen_city_loads"].map("${:.1f}".format)
+    report.table(
+        unseen.rename(columns={"model": "Model", "MAE_on_unseen_city_loads": "MAE on loads touching a withheld city"}),
+        "Error on loads involving cities withheld from training.",
+        widths=[3.2, 2.6],
+    )
 
-    document.add_heading("4. Model", level=1)
-    document.add_heading("4.1 Load model", level=2)
-    document.add_paragraph(
-        "Two models predict log(rate) from the load's own attributes, and their predictions are averaged (70/30):"
+    report.heading("4 Model")
+    report.heading("4.1 Load model", level=2)
+    report.paragraph(
+        "Rates are close to multiplicative in their drivers: shorter trips cost more per mile, Reefer and Flatbed loads cost "
+        f"about {equipment_premium['Reefer']:.0%} and {equipment_premium['Flatbed']:.0%} more per mile than Dry Van, and "
+        "heavier loads cost slightly more. All models therefore predict the logarithm of the rate."
     )
-    bullets(
-        document,
-        [
-            "LightGBM with these inputs: " + ", ".join(metadata["tree_features"]) + ". City names are left out so it "
-            "generalises to new cities; coordinates, straight-line distance and the lat/lon deltas carry the lane geography. "
-            "Default-style settings (1,500 trees, learning rate 0.03, 31 leaves); tuning them changed backtest MAE by under $1.",
-            "A log-linear Ridge model on log distance, log weight, log market_index, equipment, day of week and one-hot pickup "
-            "and delivery cities. It captures the multiplicative structure cleanly; for an unseen city it falls back to no city effect.",
-        ],
+    report.paragraph(
+        "The load model is a 70/30 average of two models. The first is LightGBM (1,500 trees, learning rate 0.03, 31 leaves) "
+        "using distance and its logarithm, equipment, weight, a missing-weight indicator, market_index, pickup and delivery "
+        "coordinates, straight-line distance, latitude and longitude differences, and day of week. City names are excluded "
+        "so that the model can price unseen cities; tuning the hyperparameters changed backtest MAE by less than $1. The "
+        "second is a ridge regression on log distance and its square, log weight and log market_index, with indicators for "
+        "equipment, pickup city, delivery city and day of week. A city it has not seen receives no city effect."
     )
-    document.add_heading("4.2 Market price level", level=2)
-    document.add_paragraph(
-        "Prices for all loads on a given day move together in a way market_index does not explain. The model separates "
-        "this daily level from the load model by alternating between the two fits, measures it on out-of-fold predictions "
-        "(so the load model cannot have memorised the day), then describes it with three parts:"
-    )
-    bullets(
-        document,
-        [
-            f"Recent level: the average of the last {metadata['level_window_days']} days of training, carried forward "
-            f"({np.expm1(level['recent_level_log']):+.1%} against the Jan-Oct average).",
-            f"Trend: prices drifted upward through the year by {np.expm1(level['trend_per_month_log']):+.2%} a month; the trend is continued from the recent level.",
-            f"Quarter-end ramp: prices climb {np.expm1(level['ramp_effect_log']):+.1%} over the last four weeks of each quarter "
-            "and reset when the next starts (seen at the end of March, June and September). December ends a quarter.",
-        ],
-    )
-    add_figure(document, config.FIGURES_DIR / "market_index_and_level.png", "Figure 3. Daily market_index (top) and the estimated daily price level (bottom).")
 
-    document.add_heading("4.3 Model comparison", level=2)
-    table = summary.reset_index().rename(columns={"model": "Model", "worst": "Worst fold MAE", "bias": "Bias", "raw_MAE": "Raw MAE", "raw_RMSE": "Raw RMSE"})
-    for column in ["MAE", "Worst fold MAE", "RMSE", "Raw MAE", "Raw RMSE"]:
+    report.heading("4.2 Market price level", level=2)
+    report.paragraph(
+        "After accounting for load attributes, the rates of all loads on a given day still move together in a way that "
+        "market_index does not explain. This daily level is estimated jointly with the load model by alternating between the "
+        "two fits for five iterations. Its final values come from out-of-fold predictions, with days assigned to five groups, "
+        "so that the load model cannot absorb day-specific effects. The daily level shows two regular patterns (Figure 3): "
+        f"an upward trend of {np.expm1(level['trend_per_month_log']):+.2%} per month, and a rise of "
+        f"{np.expm1(level['ramp_effect_log']):.1%} over the last 28 days of each quarter that reverses on the first day of the "
+        "next quarter. For a future date t, the level is forecast as"
+    )
+    report.equation("level(t) = L + b·(t − t₀) + r·q(t)")
+    report.paragraph(
+        f"where L is the mean level over the last {metadata['level_window_days']} days of training with the quarter-end "
+        f"effect removed ({np.expm1(level['recent_level_log']):+.1%} relative to the January to October average), t₀ is the "
+        "middle of that window, b is the trend, r is the quarter-end effect, and q(t) rises linearly from 0 to 1 over the "
+        "last 28 days of the quarter. The level is modelled separately because tree models cannot extrapolate in time: a "
+        "date beyond the training range would be treated as the last date seen."
+    )
+    report.figure(
+        config.FIGURES_DIR / "market_index_and_level.png",
+        "Daily market_index (top) and the estimated daily price level with the fitted and forecast level (bottom).",
+    )
+
+    report.heading("4.3 Results", level=2)
+    table = summary.reset_index().rename(columns={"model": "Model", "worst": "Worst fold", "bias": "Bias", "raw_MAE": "Raw MAE", "raw_RMSE": "Raw RMSE"})
+    for column in ["MAE", "Worst fold", "RMSE", "Raw MAE", "Raw RMSE"]:
         table[column] = table[column].map(money)
     table["MAPE"] = table["MAPE"].map("{:.2f}%".format)
     table["Bias"] = table["Bias"].map("{:+.1f}%".format)
-    add_table(document, table[["Model", "MAE", "Worst fold MAE", "RMSE", "MAPE", "Bias", "Raw MAE", "Raw RMSE"]], widths=[1.9, 0.65, 0.8, 0.65, 0.6, 0.6, 0.7, 0.75])
-    document.add_paragraph(metadata["selection_reason"])
-    document.add_paragraph(
-        "Bias is the average log error on clean loads (positive means predictions too low). Raw RMSE is dominated by the "
-        "broken prices, which no model can predict; on clean loads the error is about 2% of the rate."
+    report.table(
+        table[["Model", "MAE", "Worst fold", "RMSE", "MAPE", "Bias", "Raw MAE", "Raw RMSE"]],
+        "Backtest results, mean over three folds. MAE, worst fold, RMSE, MAPE and bias are on clean test loads.",
+        widths=[1.95, 0.6, 0.75, 0.6, 0.6, 0.55, 0.7, 0.75],
     )
-    add_figure(document, config.FIGURES_DIR / "backtest_mae.png", "Figure 4. Mean MAE over the three folds (bar) and worst fold (tick).")
+    report.paragraph(
+        f"The blend with the market level has the lowest mean and worst-fold MAE (Table 5, Figure 4). Adding the market level "
+        f"is the largest single improvement, reducing LightGBM's error from {money(lightgbm['MAE'])} to "
+        f"{money(lightgbm_level['MAE'])}. Blending with the log-linear model lowers it further to {money(best['MAE'])} and the "
+        f"worst fold from {money(lightgbm_level['worst'])} to {money(best['worst'])}. Bias is the mean log error on clean "
+        "loads, where a positive value means under-prediction. Raw RMSE is dominated by erroneous rates, which no model can "
+        "predict, and is therefore similar across models."
+    )
+    report.figure(config.FIGURES_DIR / "backtest_mae.png", "Mean MAE over the three folds (bars) and worst fold (ticks).")
 
-    document.add_heading("5. December prediction chart", level=1)
-    add_figure(document, DECEMBER_CHART, "Figure 5. Chart produced by the provided score.py for the fixed December inputs.")
-    document.add_paragraph(
-        f"Only the date changes (Lexington to Fort Wayne, 360 miles, Dry Van, 32,000 lb). Predictions run from "
-        f"{money(december['predicted_rate'].min())} to {money(december['predicted_rate'].max())}. Each day uses that day's "
-        "market_index from the validation inputs, which has a weekly cycle (peaking mid-week), so the line rises and falls "
-        "weekly. From early December the quarter-end ramp lifts prices towards 31 December. The 32 past loads on this lane "
-        "(all equipment types) were priced between about $790 and $920 per month on median. No holiday-specific effect is "
-        "assumed: training contains no December and showed no effect around Memorial Day or 4 July."
+    report.heading("5 December prediction chart")
+    report.figure(DECEMBER_CHART, "December predictions for the fixed load, as produced by the provided score.py.", width=5.8)
+    report.paragraph(
+        f"Only the date varies (Lexington to Fort Wayne, 360 miles, Dry Van, 32,000 lb). Predictions range from "
+        f"{money(december['predicted_rate'].min())} to {money(december['predicted_rate'].max())}. The weekly oscillation follows "
+        "market_index, which peaks on Thursdays, and the upward slope reflects the trend and the quarter-end rise that "
+        f"begins in early December. For reference, the {len(lane)} earlier loads on this lane, across all equipment types, "
+        f"were priced between {money(lane.min())} and {money(lane.max())}. No holiday effect is assumed: the training data "
+        "contain no December and show no effect around Memorial Day or 4 July."
     )
 
-    document.add_heading("6. Limitations and next steps", level=1)
-    bullets(
-        document,
+    report.heading("6 Limitations and next steps")
+    report.paragraph(
+        "The scoring metric is not specified. The model is optimised for typical error; under raw RMSE, erroneous rates in "
+        "the validation labels would dominate the score of any model."
+    )
+    report.paragraph(
+        "The November and December level is an extrapolation. The trend and the quarter-end rise are estimated from three "
+        "quarters, and the data contain no December, so a year-end holiday effect cannot be learned. In production, the "
+        "level would be re-estimated weekly from the most recent posted rates."
+    )
+    report.paragraph(
+        f"The selected model under-predicted by {selected_bias.min():.1f}% to {selected_bias.max():.1f}% across the folds, "
+        "because rates rose slightly faster than a linear trend. No correction was applied, since three folds are too few "
+        "to estimate one reliably; a damped or piecewise trend is the next candidate."
+    )
+    report.paragraph(
+        "Natural extensions are prediction intervals (for example, quantile LightGBM) to quantify pricing risk, lane-history "
+        "features as more data accumulates, and tracing the source of quote_signal."
+    )
+
+    report.heading("Appendix A  Reproducing the results")
+    report.paragraph("With the four provided files in data/, the following commands reproduce every number and figure in this report:")
+    report.code(
         [
-            "The scoring metric is not stated. The model targets typical (median-like) error in log space; if raw RMSE is used, "
-            "broken prices in the validation labels will dominate any model's score.",
-            "Nov-Dec level is a forecast. The trend and quarter-end ramp are extrapolated from three quarters; a year-end "
-            "holiday effect, if any, cannot be learned from this data. In production the level would be re-estimated weekly "
-            "from the latest posted rates.",
-            f"The selected model under-predicted by {selected_bias.min():+.1f}% to {selected_bias.max():+.1f}% across the three "
-            "folds: prices rose a little faster than the straight-line trend. No correction factor was added, because three "
-            "folds are too few to estimate one reliably; a damped or piecewise trend is the next thing to test.",
-            "Next steps: prediction intervals (quantile LightGBM) for pricing risk; lane-level history features once more "
-            "data exists; find the source of quote_signal and fix the pipeline that produces it.",
-        ],
+            "python -m pip install -r requirements-dev.txt",
+            "python -m src.train",
+            "python -m src.diagnostics",
+            "python -m src.predict",
+            "python score.py --predictions validation_predictions.csv --december-predictions data/december_chart_inputs.csv",
+            "python -m pytest",
+            "python -m src.report",
+        ]
     )
-
-    document.add_heading("Appendix: reproduce", level=1)
-    for command in [
-        "python -m pip install -r requirements-dev.txt",
-        "python -m src.train",
-        "python -m src.diagnostics",
-        "python -m src.predict",
-        "python score.py --predictions validation_predictions.csv --december-predictions data/december_chart_inputs.csv",
-        "python -m pytest",
-    ]:
-        paragraph = document.add_paragraph(command)
-        paragraph.runs[0].font.name = "Consolas"
-        paragraph.runs[0].font.size = Pt(9)
-
-    document.save(DOCX_PATH)
-    print(f"Saved {DOCX_PATH}")
+    report.paragraph("The test suite passes, and a fresh clone of the repository reproduces the submitted predictions exactly.")
+    report.save()
 
 
 def export_pdf() -> None:

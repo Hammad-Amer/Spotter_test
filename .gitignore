@@ -17,6 +17,3 @@ assessment/
 models/*
 !models/.gitkeep
 scorer_results/
-
-# Personal notes (kept local)
-reports/loom_script.md
