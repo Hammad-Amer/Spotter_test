@@ -293,7 +293,7 @@ def build() -> None:
         "python -m src.train",
         "python -m src.diagnostics",
         "python -m src.predict",
-        "python score.py --predictions validation_predictions.csv --december-predictions outputs/december_chart_predictions.csv",
+        "python score.py --predictions validation_predictions.csv --december-predictions data/december_chart_inputs.csv",
         "python -m pytest",
     ]:
         paragraph = document.add_paragraph(command)

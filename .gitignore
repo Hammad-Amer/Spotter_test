@@ -16,8 +16,6 @@ assessment/
 # Generated artifacts
 models/*
 !models/.gitkeep
-outputs/*
-!outputs/.gitkeep
 scorer_results/
 
 # Personal notes (kept local)

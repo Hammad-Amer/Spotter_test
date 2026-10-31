@@ -80,8 +80,8 @@ data/december_chart_inputs.csv
 ```bash
 python -m src.train          # backtest all candidates, train the final model (~2 min)
 python -m src.diagnostics    # split / quote_signal / unseen-city evidence (~2 min)
-python -m src.predict        # writes validation_predictions.csv and the December predictions
-python score.py --predictions validation_predictions.csv --december-predictions outputs/december_chart_predictions.csv
+python -m src.predict        # writes validation_predictions.csv and fills predicted_rate in data/december_chart_inputs.csv
+python score.py --predictions validation_predictions.csv --december-predictions data/december_chart_inputs.csv
 python -m pytest             # tests
 ```
 

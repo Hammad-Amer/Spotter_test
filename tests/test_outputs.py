@@ -7,9 +7,16 @@ import pytest
 import score
 from src import config, predict
 
+
+def _outputs_exist() -> bool:
+    if not (config.VALIDATION_PREDICTIONS_PATH.exists() and config.DECEMBER_PREDICTIONS_PATH.exists()):
+        return False
+    # The December file ships with an empty predicted_rate column; src.predict fills it.
+    return bool(pd.read_csv(config.DECEMBER_PREDICTIONS_PATH)["predicted_rate"].notna().all())
+
+
 requires_outputs = pytest.mark.skipif(
-    not (config.VALIDATION_PREDICTIONS_PATH.exists() and config.DECEMBER_PREDICTIONS_PATH.exists()),
-    reason="run `python -m src.train` and `python -m src.predict` first",
+    not _outputs_exist(), reason="run `python -m src.train` and `python -m src.predict` first"
 )
 
 

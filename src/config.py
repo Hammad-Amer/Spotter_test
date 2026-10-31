@@ -11,7 +11,6 @@ TEMPLATE_PATH = DATA_DIR / "validation_predictions_template.csv"
 DECEMBER_INPUTS_PATH = DATA_DIR / "december_chart_inputs.csv"
 
 MODELS_DIR = ROOT / "models"
-OUTPUTS_DIR = ROOT / "outputs"
 REPORTS_DIR = ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
@@ -19,7 +18,8 @@ MODEL_PATH = MODELS_DIR / "model.joblib"
 METADATA_PATH = MODELS_DIR / "metadata.json"
 BACKTEST_RESULTS_PATH = REPORTS_DIR / "backtest_results.csv"
 VALIDATION_PREDICTIONS_PATH = ROOT / "validation_predictions.csv"
-DECEMBER_PREDICTIONS_PATH = OUTPUTS_DIR / "december_chart_predictions.csv"
+# Spotter's README asks for predicted_rate to be filled in the December inputs file itself.
+DECEMBER_PREDICTIONS_PATH = DECEMBER_INPUTS_PATH
 
 ID_COLUMN = "load_id"
 TARGET = "posted_rate"

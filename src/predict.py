@@ -46,12 +46,11 @@ def main() -> None:
         f"median ${np.median(rates / validation['distance']):.2f}/mile)"
     )
 
-    # Fill the December file without re-parsing it, so its original columns and formatting are kept.
+    # Fill predicted_rate in place without re-parsing the file, so its original columns and formatting are kept.
     december = pd.read_csv(config.DECEMBER_INPUTS_PATH)
     december_rates = predict_rates(model, tables, data.load_december_inputs())
     check_rates(december_rates, december["distance"], "December")
     december["predicted_rate"] = december_rates.round(2)
-    config.OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     december.to_csv(config.DECEMBER_PREDICTIONS_PATH, index=False)
     print(
         f"Wrote {len(december)} December predictions to {config.DECEMBER_PREDICTIONS_PATH} "
