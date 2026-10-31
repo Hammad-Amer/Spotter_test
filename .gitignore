@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Provided data and assessment brief (shared privately by Spotter)
+data/*.csv
+assessment/
+
+# Stray CSVs at the root; the final submission file is the only one tracked
+/*.csv
+!/validation_predictions.csv
+
+# Generated artifacts
+models/*
+!models/.gitkeep
+outputs/*
+!outputs/.gitkeep
+scorer_results/

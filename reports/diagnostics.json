@@ -1,0 +1,148 @@
+{
+  "split_comparison": [
+    {
+      "split": "Random 80/20",
+      "features": "with quote_signal",
+      "MAE": 36.8
+    },
+    {
+      "split": "Random 80/20",
+      "features": "without quote_signal",
+      "MAE": 47.0
+    },
+    {
+      "split": "Time: Jan-Aug -> Sep-Oct",
+      "features": "with quote_signal",
+      "MAE": 84.9
+    },
+    {
+      "split": "Time: Jan-Aug -> Sep-Oct",
+      "features": "without quote_signal",
+      "MAE": 107.7
+    }
+  ],
+  "quote_signal_by_month": [
+    {
+      "month": "2025-01",
+      "corr_quote_signal_rate_per_mile": 0.996,
+      "corr_quote_signal_distance": -0.722,
+      "MAE_with_quote_signal": 79.8,
+      "MAE_without_quote_signal": 109.2
+    },
+    {
+      "month": "2025-02",
+      "corr_quote_signal_rate_per_mile": 0.996,
+      "corr_quote_signal_distance": -0.715,
+      "MAE_with_quote_signal": 44.8,
+      "MAE_without_quote_signal": 67.9
+    },
+    {
+      "month": "2025-03",
+      "corr_quote_signal_rate_per_mile": 0.997,
+      "corr_quote_signal_distance": -0.698,
+      "MAE_with_quote_signal": 32.0,
+      "MAE_without_quote_signal": 42.4
+    },
+    {
+      "month": "2025-04",
+      "corr_quote_signal_rate_per_mile": -0.993,
+      "corr_quote_signal_distance": 0.713,
+      "MAE_with_quote_signal": 43.5,
+      "MAE_without_quote_signal": 45.9
+    },
+    {
+      "month": "2025-05",
+      "corr_quote_signal_rate_per_mile": -0.994,
+      "corr_quote_signal_distance": 0.724,
+      "MAE_with_quote_signal": 32.4,
+      "MAE_without_quote_signal": 38.6
+    },
+    {
+      "month": "2025-06",
+      "corr_quote_signal_rate_per_mile": 0.997,
+      "corr_quote_signal_distance": -0.7,
+      "MAE_with_quote_signal": 73.1,
+      "MAE_without_quote_signal": 62.2
+    },
+    {
+      "month": "2025-07",
+      "corr_quote_signal_rate_per_mile": -0.994,
+      "corr_quote_signal_distance": 0.716,
+      "MAE_with_quote_signal": 35.6,
+      "MAE_without_quote_signal": 39.1
+    },
+    {
+      "month": "2025-08",
+      "corr_quote_signal_rate_per_mile": -0.02,
+      "corr_quote_signal_distance": 0.013,
+      "MAE_with_quote_signal": 74.4,
+      "MAE_without_quote_signal": 37.2
+    },
+    {
+      "month": "2025-09",
+      "corr_quote_signal_rate_per_mile": 0.997,
+      "corr_quote_signal_distance": -0.701,
+      "MAE_with_quote_signal": 76.8,
+      "MAE_without_quote_signal": 91.9
+    },
+    {
+      "month": "2025-10",
+      "corr_quote_signal_rate_per_mile": -0.994,
+      "corr_quote_signal_distance": 0.715,
+      "MAE_with_quote_signal": 67.0,
+      "MAE_without_quote_signal": 85.7
+    },
+    {
+      "month": "2025-11 (validation)",
+      "corr_quote_signal_distance": 0.017
+    },
+    {
+      "month": "2025-12 (validation)",
+      "corr_quote_signal_distance": 0.005
+    }
+  ],
+  "unseen_cities": [
+    {
+      "model": "Log-linear (city one-hot)",
+      "hidden_cities": [
+        "Bakersfield",
+        "Hartford",
+        "Memphis",
+        "New York",
+        "San Antonio",
+        "Toledo",
+        "Tulsa",
+        "Washington"
+      ],
+      "MAE_on_unseen_city_loads": 67.4
+    },
+    {
+      "model": "LightGBM (coordinates)",
+      "hidden_cities": [
+        "Bakersfield",
+        "Hartford",
+        "Memphis",
+        "New York",
+        "San Antonio",
+        "Toledo",
+        "Tulsa",
+        "Washington"
+      ],
+      "MAE_on_unseen_city_loads": 52.6
+    },
+    {
+      "model": "Blend",
+      "hidden_cities": [
+        "Bakersfield",
+        "Hartford",
+        "Memphis",
+        "New York",
+        "San Antonio",
+        "Toledo",
+        "Tulsa",
+        "Washington"
+      ],
+      "MAE_on_unseen_city_loads": 52.9
+    }
+  ]
+}
