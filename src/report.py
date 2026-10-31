@@ -184,7 +184,9 @@ def build() -> None:
             "Lookup tables (daily market_index medians, city coordinates, weight medians) are built from input columns only, "
             "never from posted_rate. Validation inputs are used only to extend the daily market_index table to Nov-Dec, "
             "which needs no labels.",
-            "Outlier flags and the price-level estimate are computed inside each fold from that fold's training data only.",
+            "The models and the market price level are fitted inside each fold from that fold's training data only.",
+            "Broken prices are flagged once on all Jan-Oct loads. Flagging each fold's training data on its own picks "
+            "exactly the same loads (275, 400 and 533), because no load sits between normal noise and the 1.8x cut-off.",
         ],
     )
 
