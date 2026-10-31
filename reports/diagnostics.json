@@ -3,22 +3,22 @@
     {
       "split": "Random 80/20",
       "features": "with quote_signal",
-      "MAE": 36.8
+      "MAE": 38.5
     },
     {
       "split": "Random 80/20",
       "features": "without quote_signal",
-      "MAE": 47.0
+      "MAE": 51.6
     },
     {
       "split": "Time: Jan-Aug -> Sep-Oct",
       "features": "with quote_signal",
-      "MAE": 84.9
+      "MAE": 91.8
     },
     {
       "split": "Time: Jan-Aug -> Sep-Oct",
       "features": "without quote_signal",
-      "MAE": 107.7
+      "MAE": 117.6
     }
   ],
   "quote_signal_by_month": [
@@ -26,71 +26,71 @@
       "month": "2025-01",
       "corr_quote_signal_rate_per_mile": 0.996,
       "corr_quote_signal_distance": -0.722,
-      "MAE_with_quote_signal": 79.8,
-      "MAE_without_quote_signal": 109.2
+      "MAE_with_quote_signal": 83.0,
+      "MAE_without_quote_signal": 117.2
     },
     {
       "month": "2025-02",
       "corr_quote_signal_rate_per_mile": 0.996,
       "corr_quote_signal_distance": -0.715,
-      "MAE_with_quote_signal": 44.8,
-      "MAE_without_quote_signal": 67.9
+      "MAE_with_quote_signal": 44.6,
+      "MAE_without_quote_signal": 69.9
     },
     {
       "month": "2025-03",
       "corr_quote_signal_rate_per_mile": 0.997,
       "corr_quote_signal_distance": -0.698,
-      "MAE_with_quote_signal": 32.0,
-      "MAE_without_quote_signal": 42.4
+      "MAE_with_quote_signal": 39.8,
+      "MAE_without_quote_signal": 51.0
     },
     {
       "month": "2025-04",
       "corr_quote_signal_rate_per_mile": -0.993,
       "corr_quote_signal_distance": 0.713,
-      "MAE_with_quote_signal": 43.5,
-      "MAE_without_quote_signal": 45.9
+      "MAE_with_quote_signal": 47.5,
+      "MAE_without_quote_signal": 56.9
     },
     {
       "month": "2025-05",
       "corr_quote_signal_rate_per_mile": -0.994,
       "corr_quote_signal_distance": 0.724,
-      "MAE_with_quote_signal": 32.4,
-      "MAE_without_quote_signal": 38.6
+      "MAE_with_quote_signal": 33.2,
+      "MAE_without_quote_signal": 45.0
     },
     {
       "month": "2025-06",
       "corr_quote_signal_rate_per_mile": 0.997,
       "corr_quote_signal_distance": -0.7,
-      "MAE_with_quote_signal": 73.1,
-      "MAE_without_quote_signal": 62.2
+      "MAE_with_quote_signal": 71.0,
+      "MAE_without_quote_signal": 71.5
     },
     {
       "month": "2025-07",
       "corr_quote_signal_rate_per_mile": -0.994,
       "corr_quote_signal_distance": 0.716,
-      "MAE_with_quote_signal": 35.6,
-      "MAE_without_quote_signal": 39.1
+      "MAE_with_quote_signal": 34.4,
+      "MAE_without_quote_signal": 36.6
     },
     {
       "month": "2025-08",
       "corr_quote_signal_rate_per_mile": -0.02,
       "corr_quote_signal_distance": 0.013,
-      "MAE_with_quote_signal": 74.4,
-      "MAE_without_quote_signal": 37.2
+      "MAE_with_quote_signal": 80.5,
+      "MAE_without_quote_signal": 36.5
     },
     {
       "month": "2025-09",
       "corr_quote_signal_rate_per_mile": 0.997,
       "corr_quote_signal_distance": -0.701,
-      "MAE_with_quote_signal": 76.8,
-      "MAE_without_quote_signal": 91.9
+      "MAE_with_quote_signal": 91.1,
+      "MAE_without_quote_signal": 110.0
     },
     {
       "month": "2025-10",
       "corr_quote_signal_rate_per_mile": -0.994,
       "corr_quote_signal_distance": 0.715,
-      "MAE_with_quote_signal": 67.0,
-      "MAE_without_quote_signal": 85.7
+      "MAE_with_quote_signal": 68.2,
+      "MAE_without_quote_signal": 82.9
     },
     {
       "month": "2025-11 (validation)",
@@ -114,7 +114,7 @@
         "Tulsa",
         "Washington"
       ],
-      "MAE_on_unseen_city_loads": 67.4
+      "MAE_on_unseen_city_loads": 70.1
     },
     {
       "model": "LightGBM (coordinates)",
@@ -128,7 +128,7 @@
         "Tulsa",
         "Washington"
       ],
-      "MAE_on_unseen_city_loads": 52.6
+      "MAE_on_unseen_city_loads": 56.9
     },
     {
       "model": "Blend",
@@ -142,7 +142,7 @@
         "Tulsa",
         "Washington"
       ],
-      "MAE_on_unseen_city_loads": 52.9
+      "MAE_on_unseen_city_loads": 57.0
     }
   ]
 }

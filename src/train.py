@@ -17,13 +17,18 @@ CANDIDATES = {
     "Naive $/mile": lambda: models.NaiveRatePerMile(),
     "Log-linear": lambda: models.LogLinear(),
     "LightGBM": lambda: models.LightGBM(),
-    "Log-linear + level": lambda: models.LevelAdjusted(models.LogLinear()),
-    "LightGBM + level": lambda: models.LevelAdjusted(models.LightGBM()),
-    "Blend + level": lambda: models.LevelAdjusted(
+    "LightGBM + recent level": lambda: models.LevelAdjusted(models.LightGBM(), use_ramp=False, use_trend=False),
+    "LightGBM + market level": lambda: models.LevelAdjusted(models.LightGBM()),
+    "Blend + market level": lambda: models.LevelAdjusted(
         models.Blend([models.LogLinear(), models.LightGBM()], weights=[0.3, 0.7])
     ),
 }
-SELECTED = "Blend + level"
+SELECTED = "Blend + market level"
+SELECTION_REASON = (
+    "Blend + market level is selected: it has the lowest mean and worst-fold MAE. It averages a log-linear model "
+    "(clean multiplicative structure and city effects) with LightGBM (non-linear effects; coordinates for unseen cities), "
+    "and both share one market price level of recent level + trend + quarter-end ramp."
+)
 
 
 def prepare_training_data():
@@ -47,7 +52,7 @@ def backtest(train: pd.DataFrame, outlier: pd.Series, candidates=CANDIDATES) -> 
         for fold in split.FOLDS:
             fit_mask, test_mask = split.fold_masks(train["date"], fold)
             fit_mask &= ~outlier
-            model = make_model().fit(X[fit_mask], y_log[fit_mask], dates=train.loc[fit_mask, "date"])
+            model = make_model().fit(X[fit_mask], y_log[fit_mask])
             predicted = np.exp(model.predict(X[test_mask]))
             actual = train.loc[test_mask, config.TARGET].to_numpy()
             clean = ~outlier[test_mask].to_numpy()
@@ -57,6 +62,8 @@ def backtest(train: pd.DataFrame, outlier: pd.Series, candidates=CANDIDATES) -> 
                     "model": name,
                     "fold": fold.name,
                     **split.regression_metrics(actual[clean], predicted[clean]),
+                    # Positive = predictions too low on average (median-style, in %).
+                    "bias_pct": float(100 * np.mean(np.log(actual[clean] / predicted[clean]))),
                     **{f"raw_{metric}": value for metric, value in raw_metrics.items()},
                 }
             )
@@ -86,24 +93,33 @@ def main() -> None:
     print(f"\nSaved per-fold results to {config.BACKTEST_RESULTS_PATH}")
 
     clean = train[~outlier]
-    model = CANDIDATES[SELECTED]().fit(
-        features.build_features(clean), np.log(clean[config.TARGET]), dates=clean["date"]
-    )
+    model = CANDIDATES[SELECTED]().fit(features.build_features(clean), np.log(clean[config.TARGET]))
     config.MODELS_DIR.mkdir(parents=True, exist_ok=True)
     joblib.dump({"model": model, "tables": tables}, config.MODEL_PATH)
 
+    market_level = {
+        # Relative to the average Jan-Oct level, in log units (~ fractions).
+        "recent_level_log": model.level_ - float(model.daily_level_.mean()),
+        "trend_per_month_log": model.trend_per_day_ * 30,
+        "ramp_effect_log": model.ramp_effect_,
+    }
     metadata = {
         "selected_model": SELECTED,
+        "selection_reason": SELECTION_REASON,
         "training_rows": int(len(clean)),
         "excluded_outliers": int(outlier.sum()),
         "training_dates": [f"{train['date'].min():%Y-%m-%d}", f"{train['date'].max():%Y-%m-%d}"],
         "tree_features": models.TREE_FEATURES,
         "level_window_days": model.window_days,
-        "forecast_level_log": model.level_,
+        "market_level": market_level,
         "backtest_summary": summary.round(3).reset_index().to_dict(orient="records"),
     }
     config.METADATA_PATH.write_text(json.dumps(metadata, indent=2))
-    print(f"Trained '{SELECTED}' on {len(clean):,} loads; carried-forward price level {np.exp(model.level_) - 1:+.2%}.")
+    print(
+        f"Trained '{SELECTED}' on {len(clean):,} loads. Market level: recent {np.expm1(market_level['recent_level_log']):+.2%} "
+        f"vs Jan-Oct average, trend {np.expm1(market_level['trend_per_month_log']):+.2%}/month, "
+        f"quarter-end ramp {np.expm1(market_level['ramp_effect_log']):+.2%}."
+    )
     print(f"Saved model to {config.MODEL_PATH}")
 
 

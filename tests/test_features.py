@@ -13,7 +13,7 @@ def test_haversine_matches_known_distance():
 
 @pytest.mark.parametrize(
     ("day", "expected"),
-    [("2025-12-31", 1.0), ("2025-12-22", 0.1), ("2025-12-21", 0.0), ("2025-11-30", 0.0), ("2025-09-30", 1.0)],
+    [("2025-12-31", 1.0), ("2025-12-17", 0.5), ("2025-12-03", 0.0), ("2025-11-30", 0.0), ("2025-09-30", 1.0)],
 )
 def test_quarter_end_proximity(synthetic_loads, day, expected):
     frame = synthetic_loads.head(1).assign(date=pd.Timestamp(day), weight_missing=0)
